@@ -73,6 +73,12 @@
       background-color: #475569;
       cursor: not-allowed;
     }
+    .btn-secondary {
+      background-color: #334155;
+    }
+    .btn-secondary:hover {
+      background-color: #475569;
+    }
     #preview-container {
       margin-top: 24px;
       display: none;
@@ -88,6 +94,18 @@
       margin-top: 12px;
       font-size: 0.85rem;
       color: #38bdf8;
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      display: none;
+    }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
     }
   </style>
 </head>
@@ -106,7 +124,11 @@
       <canvas id="canvas" width="1600" height="1200"></canvas>
       <div class="info" id="statusInfo">Dimensions: 1600 x 1200 px</div>
       <br>
-      <a id="downloadBtn" class="btn" download="resized-1600x1200.png">Download Image</a>
+      <div class="actions">
+        <button id="downloadBtn" class="btn">Download Image</button>
+        <button id="shareBtn" class="btn btn-secondary" style="display:none;">Save / Share Image</button>
+        <div class="hint" id="iosHint">On iPhone: tap "Save / Share Image" above, then choose "Save Image" in the share sheet. (Or long-press the image below and choose "Save Image".)</div>
+      </div>
     </div>
   </div>
 
@@ -117,10 +139,18 @@
     const ctx = canvas.getContext('2d');
     const previewContainer = document.getElementById('preview-container');
     const downloadBtn = document.getElementById('downloadBtn');
+    const shareBtn = document.getElementById('shareBtn');
     const statusInfo = document.getElementById('statusInfo');
+    const iosHint = document.getElementById('iosHint');
 
     const TARGET_WIDTH = 1600;
     const TARGET_HEIGHT = 1200;
+
+    // Detect iOS (including iPadOS, which reports as "Mac" but has touch support)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    let currentFileName = 'resized-1600x1200.png';
 
     dropzone.addEventListener('click', () => fileInput.click());
 
@@ -178,15 +208,67 @@
         // Draw image onto canvas
         ctx.drawImage(img, x, y, drawWidth, drawHeight);
 
-        // Update download link and preview UI
-        downloadBtn.href = canvas.toDataURL('image/png');
-        downloadBtn.download = `resized_${file.name.replace(/\.[^/.]+$/, "")}.png`;
+        currentFileName = `resized_${file.name.replace(/\.[^/.]+$/, "")}.png`;
         statusInfo.textContent = `Original: ${img.width}x${img.height} → Canvas: 1600x1200 (Centered & Padded)`;
         previewContainer.style.display = 'block';
+
+        updateDownloadOptions();
 
         URL.revokeObjectURL(img.src);
       };
     }
+
+    let currentBlob = null;
+
+    function updateDownloadOptions() {
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        currentBlob = blob;
+
+        // On iOS, prefer the native Web Share sheet, which actually works
+        // for saving images to Photos/Files.
+        const file = new File([blob], currentFileName, { type: 'image/png' });
+        const canUseShare = navigator.canShare && navigator.canShare({ files: [file] });
+
+        if (isIOS && canUseShare) {
+          shareBtn.style.display = 'inline-block';
+          iosHint.style.display = 'block';
+          shareBtn.onclick = async () => {
+            try {
+              await navigator.share({
+                files: [file],
+                title: currentFileName
+              });
+            } catch (err) {
+              // User cancelled or share failed silently; no action needed.
+            }
+          };
+        } else if (isIOS) {
+          // iOS but Web Share with files isn't supported (older Safari) —
+          // fall back to long-press instructions only.
+          shareBtn.style.display = 'none';
+          iosHint.textContent = 'On iPhone: long-press the image above and choose "Save Image" to save it to Photos.';
+          iosHint.style.display = 'block';
+        } else {
+          shareBtn.style.display = 'none';
+          iosHint.style.display = 'none';
+        }
+      }, 'image/png');
+    }
+
+    downloadBtn.addEventListener('click', async () => {
+      if (!currentBlob) return;
+      const downloads = await claude.use('downloads');
+      if (!downloads) {
+        alert('Saving files is unavailable in this view.');
+        return;
+      }
+      try {
+        await downloads.save({ filename: currentFileName, data: currentBlob });
+      } catch (err) {
+        // Viewer declined, or another save is already in progress; no action needed.
+      }
+    });
   </script>
 </body>
 </html>
