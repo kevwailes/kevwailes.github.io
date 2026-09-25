@@ -208,6 +208,15 @@
         // Draw image onto canvas
         ctx.drawImage(img, x, y, drawWidth, drawHeight);
 
+        // If the image is padded (doesn't fill the full 1600x1200 canvas),
+        // outline it with a 1px border so the edge is visible against the black.
+        const isPadded = drawWidth < TARGET_WIDTH || drawHeight < TARGET_HEIGHT;
+        if (isPadded) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, drawWidth - 1, drawHeight - 1);
+        }
+
         currentFileName = `resized_${file.name.replace(/\.[^/.]+$/, "")}.png`;
         statusInfo.textContent = `Original: ${img.width}x${img.height} → Canvas: 1600x1200 (Centered & Padded)`;
         previewContainer.style.display = 'block';
